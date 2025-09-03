@@ -162,75 +162,89 @@ plt.show()
 #X_test['MonthlyCharges']=np.log(X_test['MonthlyCharges']+1)
 #X_test['TotalCharges']=np.log(X_test['TotalCharges']+1)
 
-#why choose Decision Tree
+#why choose Random Forest
 #Most of my features are catgorical and highly imbalanced and not linearly seperable
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import cross_val_score, GridSearchCV
+from imblearn.pipeline import Pipeline
 
-baselineDT =DecisionTreeClassifier(criterion='gini',random_state=100,class_weight='balanced')
-baselineDT.fit(X_train, y_train)
-y_pred=baselineDT.predict(X_test)
+baselineRF=RandomForestClassifier(
+    n_estimators=100,
+    criterion='gini',
+    random_state=100,
+    class_weight='balanced',
+    n_jobs=-1
+)
+baselineRF.fit(X_train, y_train)
+y_pred=baselineRF.predict(X_test)
 
-print("Baseline")
-print(classification_report(y_test,y_pred,labels=[0,1]))
-cm=confusion_matrix(y_test,y_pred)
+print("Baseline - Random Forest")
+print(classification_report(y_test,y_pred,labels=[0, 1]))
+cm = confusion_matrix(y_test, y_pred)
 print(cm)
 
-#oversampling
+
 smote=SMOTEENN(random_state=42)
 X_new,y_new=smote.fit_resample(X_train,y_train)
-adasynDT=DecisionTreeClassifier(criterion='gini',random_state=100,class_weight='balanced')
-adasynDT.fit(X_new,y_new)
-new_y_pred=adasynDT.predict(X_test)
+rf_smote = RandomForestClassifier(
+    n_estimators=200,
+    criterion='gini',
+    random_state=100,
+    class_weight='balanced',
+    n_jobs=-1
+)
+rf_smote.fit(X_new, y_new)
+new_y_pred=rf_smote.predict(X_test)
 
-print("Stage 2 - After ADASYN Resampling")
-print(classification_report(y_test,new_y_pred,labels=[0,1]))
+print("After SMOTEENN Resampling (Random Forest)")
+print(classification_report(y_test,new_y_pred,labels=[0, 1]))
 cm=confusion_matrix(y_test,new_y_pred)
 print(cm)
+
 train_df_new=X_new.copy()
 train_df_new['Churn']=y_new
-df=train_df_new[['MonthlyCharges', 'TotalCharges', 'Churn']].copy()
-sns.pairplot(df, hue='Churn')
+df=train_df_new[['MonthlyCharges','TotalCharges','Churn']].copy()
+sns.pairplot(df,hue='Churn')
 plt.title("After oversampling")
 plt.show()
 
 ratio_new=y_new.value_counts()
-percentages=[(ratio_new[0]/len(y_new))*100,(ratio_new[1]/len(y_new))*100]
-plt.bar(ratio_new.keys(),percentages,color=['blue','red'])
+percentages = [(ratio_new[0] / len(y_new)) * 100, (ratio_new[1] / len(y_new)) * 100]
+plt.bar(ratio_new.keys(), percentages, color=['blue', 'red'])
 plt.title("Churn Distribution %")
 plt.ylabel("Percentage")
 plt.show()
 
-from sklearn.model_selection import cross_val_score
-from imblearn.pipeline import Pipeline
-
-pipeline_cv = Pipeline([
-    ('smote', SMOTEENN(random_state=42)),
-    ('clf',DecisionTreeClassifier(criterion='gini',random_state=100,class_weight='balanced'))
+pipeline_cv=Pipeline([
+    ('smote',SMOTEENN(random_state=42)),
+    ('clf',RandomForestClassifier(
+        n_estimators=200,
+        random_state=100,
+        class_weight='balanced',
+        n_jobs=-1
+    ))
 ])
 
-scores = cross_val_score(pipeline_cv,X_train,y_train,cv=5,scoring='f1_macro')
+scores=cross_val_score(pipeline_cv,X_train,y_train,cv=5,scoring='f1_macro')
+print("Cross-Validated F1 Score (Train set only):",scores.mean())
 
-print("Stage 3 - Cross-Validated F1 Score (Train set only):", scores.mean())
-
-
-
-
-from sklearn.model_selection import GridSearchCV
 
 param_grid = {
-    'clf__max_depth': [3, 5, 7, None],
-    'clf__min_samples_split': [2,3,5, 10]
+    'clf__n_estimators': [100,200,300],
+    'clf__max_depth': [5,10,15,None],
+    'clf__min_samples_split': [2,5,10],
+    'clf__min_samples_leaf': [1,2,4]
 }
 
-grid = GridSearchCV(pipeline_cv, param_grid, cv=5, scoring='f1_macro')
-grid.fit(X_train, y_train)
-
-y_pred_best = grid.predict(X_test)
-
-print("Stage 4 - After Hyperparameter Tuning")
+grid=GridSearchCV(pipeline_cv,param_grid,cv=5,scoring='f1_macro', n_jobs=-1)
+grid.fit(X_train,y_train)
+y_pred_best=grid.predict(X_test)
+print("After Hyperparameter Tuning (Random Forest)")
 print("Best Params:", grid.best_params_)
-print(classification_report(y_test, y_pred_best,labels=[0,1]))
+print(classification_report(y_test,y_pred_best,labels=[0, 1]))
 cm=confusion_matrix(y_test,y_pred_best)
 print(cm)
+
 
 import pickle
 with open('model.pkl','wb') as f: 
@@ -239,26 +253,4 @@ with open('columns.pkl','wb') as f:
     pickle.dump(X_train.columns,f)
 with open('bin_edges.pkl','wb') as f: 
     pickle.dump(bin_edges,f)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
